@@ -80,19 +80,19 @@ export class EpubTreeProvider implements vscode.TreeDataProvider<EpubChapter> {
     treeItem.id = element.id;
     treeItem.tooltip = element.label;
 
-    // Only add navigation command for leaf nodes (chapters without children)
-    if (!hasChildren) {
+    // Always set an icon
+    if (hasChildren) {
+      // Use folder icon for sections with children
+      treeItem.iconPath = new vscode.ThemeIcon("folder");
+    } else {
+      // Use document icon for actual chapters
+      treeItem.iconPath = new vscode.ThemeIcon("file-text");
+
       treeItem.command = {
         command: "epubview.goToChapter",
         title: "Go to Chapter",
         arguments: [element.href],
       };
-
-      // Use document icon for actual chapters
-      treeItem.iconPath = new vscode.ThemeIcon("document");
-    } else {
-      // Use folder icon for sections with children
-      treeItem.iconPath = new vscode.ThemeIcon("folder");
     }
 
     return treeItem;
