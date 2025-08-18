@@ -1,10 +1,7 @@
 import * as vscode from "vscode";
 import { getCreditsHtml } from "../webviews/credits";
 
-export function showCredits(
-  context: vscode.ExtensionContext,
-  webview: vscode.Webview
-) {
+export function showCredits(context: vscode.ExtensionContext) {
   const panel = vscode.window.createWebviewPanel(
     "epubviewCredits",
     "EpubView - About & Support",
@@ -12,5 +9,5 @@ export function showCredits(
     { enableFindWidget: true }
   );
 
-  panel.webview.html = getCreditsHtml(context, webview);
+  panel.webview.html = getCreditsHtml(context, panel.webview);
 }
