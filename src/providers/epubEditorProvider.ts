@@ -140,101 +140,142 @@ export class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
             </style>
         </head>
         <body>
-            <div id="controls">
-              <div class="color-control">
-                      <label>Text:</label>
-                      <input type="color" id="textColor" value="#000000">
-                  </div>
-                <div class="color-control">
-                    <label>Background:</label>
-                    <input type="color" id="bgColor" value="#ffffff">
-                </div>
-                <button id="prev" onclick="prevPage()">← Previous</button>
-                <button id="next" onclick="nextPage()">Next →</button>
+          <div id="controls">
+            <div style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: var(--vscode-editor-background); padding: 10px; border: 1px solid var(--vscode-panel-border); border-radius: 4px;">
+              <div style="margin-bottom: 8px;">
+                <label for="textColor" style="display: block; margin-bottom: 4px; color: var(--vscode-foreground);">Text Color:</label>
+                <input type="color" id="textColor" value="#000000" style="width: 50px; height: 30px;">
+              </div>
+              <div style="margin-bottom: 8px;">
+                <label for="bgColor" style="display: block; margin-bottom: 4px; color: var(--vscode-foreground);">Background:</label>
+                <input type="color" id="bgColor" value="#ffffff" style="width: 50px; height: 30px;">
+              </div>
+              <div>
+                <label for="fontFamily" style="display: block; margin-bottom: 4px; color: var(--vscode-foreground);">Font:</label>
+                <select id="fontFamily" style="width: 120px; padding: 4px;">
+                  <option value="Georgia, serif">Georgia</option>
+                  <option value="Times, serif">Times</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Helvetica, sans-serif">Helvetica</option>
+                  <option value="Verdana, sans-serif">Verdana</option>
+                  <option value="'Courier New', monospace">Courier New</option>
+                  <option value="'Comic Sans MS', cursive">Comic Sans</option>
+                </select>
+              </div>
             </div>
-            <div id="epub-container"></div>
+            <button id="prev" onclick="prevPage()">← Previous</button>
+            <button id="next" onclick="nextPage()">Next →</button>
+          </div>
+          <div id="epub-container"></div>
+          <script>
+            const vscode = acquireVsCodeApi();
+            let book, rendition;
+            let currentLocation = null;
             
-            <script>
-                const vscode = acquireVsCodeApi();
-                let book, rendition;
-                let currentLocation = null;
+            // Get saved state
+            const state = vscode.getState();
+            
+            // Convert base64 back to ArrayBuffer
+            const binaryString = atob('${base64Data}');
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            // Initialize epub
+            book = ePub(bytes.buffer);
+            rendition = book.renderTo("epub-container", { 
+                width: "100%", 
+                height: "100%" 
+            });
+            
+            // Restore position if available
+            if (state && state.currentLocation) {
+                rendition.display(state.currentLocation);
+            } else {
+                rendition.display();
+            }
                 
-                // Get saved state
-                const state = vscode.getState();
+            // Send TOC to extension when book is ready
+            book.ready.then(() => {
+              const toc = book.navigation.toc;
+              console.log('Book ready, TOC:', toc);
+              vscode.postMessage({
+                  type: 'tocLoaded',
+                  toc: toc
+              });
+              console.log('TOC message sent to extension');
+            });
+            
+            // Save location when changed
+            rendition.on('relocated', (location) => {
+                currentLocation = location.start.cfi;
+                vscode.setState({ currentLocation: currentLocation });
                 
-                // Convert base64 back to ArrayBuffer
-                const binaryString = atob('${base64Data}');
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                
-                // Initialize epub
-                book = ePub(bytes.buffer);
-                rendition = book.renderTo("epub-container", { 
-                    width: "100%", 
-                    height: "100%" 
-                });
-                
-                // Restore position if available
-                if (state && state.currentLocation) {
-                    rendition.display(state.currentLocation);
-                } else {
-                    rendition.display();
-                }
-                
-                // Send TOC to extension when book is ready
-                book.ready.then(() => {
-                  const toc = book.navigation.toc;
-                  console.log('Book ready, TOC:', toc);
-                  vscode.postMessage({
-                      type: 'tocLoaded',
-                      toc: toc
-                  });
-                  console.log('TOC message sent to extension');
-                });
-                
-                // Save location when changed
-                rendition.on('relocated', (location) => {
-                    currentLocation = location.start.cfi;
-                    vscode.setState({ currentLocation: currentLocation });
-                    
-                    document.getElementById('prev').disabled = location.atStart;
-                    document.getElementById('next').disabled = location.atEnd;
-                });
+                document.getElementById('prev').disabled = location.atStart;
+                document.getElementById('next').disabled = location.atEnd;
+            });
 
-                // Color controls
-                document.getElementById('textColor').addEventListener('change', (e) => {
-                    rendition.themes.default({
-                        'body': { 'color': e.target.value + ' !important' }
-                    });
-                });
-                
-                document.getElementById('bgColor').addEventListener('change', (e) => {
-                    rendition.themes.default({
-                        'body': { 'background-color': e.target.value + ' !important' }
-                    });
-                });
+            // Store current styles
+            let currentStyles = {
+                color: '#000000',
+                backgroundColor: '#ffffff',
+                fontFamily: 'Georgia, serif'
+            };
 
-                // Navigation functions
-                function nextPage() {
-                    rendition.next();
+            // Apply theme with persistence
+            function applyTheme() {
+                if (rendition && rendition.themes) {
+                    rendition.themes.default({
+                        'body': { 
+                            'color': currentStyles.color + ' !important',
+                            'background-color': currentStyles.backgroundColor + ' !important',
+                            'font-family': currentStyles.fontFamily + ' !important'
+                        }
+                    });
                 }
+            }
+
+            // Enhanced color picker handlers
+            document.getElementById('textColor').addEventListener('change', (e) => {
+                currentStyles.color = e.target.value;
+                applyTheme();
+            });
+
+            document.getElementById('bgColor').addEventListener('change', (e) => {
+                currentStyles.backgroundColor = e.target.value;
+                applyTheme();
+            });
+
+            document.getElementById('fontFamily').addEventListener('change', (e) => {
+                currentStyles.fontFamily = e.target.value;
+                applyTheme();
+            });
+
+            // Reapply styles when content changes
+            rendition.on('rendered', () => {
+                setTimeout(applyTheme, 100); // Small delay to ensure content is ready
+            });
+
+            // Navigation functions
+            function nextPage() {
+                rendition.next();
+            }
+            
+            function prevPage() {
+                rendition.prev();
+            }
                 
-                function prevPage() {
-                    rendition.prev();
+            // Listen for navigation from sidebar
+            window.addEventListener('message', event => {
+                const message = event.data;
+                if (message.type === 'navigateToChapter') {
+                    rendition.display(message.href);
                 }
-                
-                // Listen for navigation from sidebar
-                window.addEventListener('message', event => {
-                    const message = event.data;
-                    if (message.type === 'navigateToChapter') {
-                        rendition.display(message.href);
-                    }
-                });
-            </script>
+            });
+          </script>
         </body>
-        </html>
+      </html>
     `;
   }
 
